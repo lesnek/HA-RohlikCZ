@@ -160,3 +160,51 @@ def extract_delivery_datetime(text: str) -> datetime | None:
 
     # No valid time information found
     return None
+
+
+def get_earliest_order(orders: list) -> dict | None:
+    """
+    Find the order with the earliest delivery time from a list of orders.
+
+    Args:
+        orders (list): List of order dictionaries, each containing a 'deliverySlot' with 'since' field
+
+    Returns:
+        dict: The order with the earliest delivery time, or None if no valid order found
+    """
+    if not orders or len(orders) == 0:
+        return None
+
+    earliest_order = None
+    earliest_time = None
+
+    for order in orders:
+        try:
+            # Extract delivery slot and since time
+            delivery_slot = order.get("deliverySlot", {})
+            since_str = delivery_slot.get("since", None)
+
+            if since_str is None:
+                continue
+
+            # Parse the datetime string (format: "%Y-%m-%dT%H:%M:%S.%f%z")
+            try:
+                delivery_time = datetime.strptime(since_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+            except ValueError:
+                # Try without microseconds if the format doesn't match
+                try:
+                    delivery_time = datetime.strptime(since_str, "%Y-%m-%dT%H:%M:%S%z")
+                except ValueError:
+                    # Skip orders with invalid date format
+                    continue
+
+            # Check if this is the earliest order so far
+            if earliest_time is None or delivery_time < earliest_time:
+                earliest_time = delivery_time
+                earliest_order = order
+
+        except (KeyError, TypeError, AttributeError):
+            # Skip orders with missing or invalid structure
+            continue
+
+    return earliest_order

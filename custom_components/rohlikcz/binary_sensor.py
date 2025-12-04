@@ -14,6 +14,7 @@ from .const import DOMAIN, ICON_REUSABLE, ICON_PARENTCLUB, ICON_PREMIUM, ICON_OR
     ICON_CALENDAR_REMOVE
 from .entity import BaseEntity
 from .hub import RohlikAccount
+from .utils import get_earliest_order
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -166,8 +167,8 @@ class IsOrderedSensor(BaseEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict | None:
         next_orders = self._rohlik_account.data.get('next_order', [])
-        if next_orders and len(next_orders) > 0:
-            order = next_orders[0]  # Get the first next order
+        order = get_earliest_order(next_orders)
+        if order:
             return {
                 "order_data": order
             }

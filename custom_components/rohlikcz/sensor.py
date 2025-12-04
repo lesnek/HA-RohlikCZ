@@ -19,7 +19,7 @@ from .const import DOMAIN, ICON_UPDATE, ICON_CREDIT, ICON_NO_LIMIT, ICON_FREE_EX
     ICON_NEXT_ORDER_TILL, ICON_INFO, ICON_DELIVERY_TIME, ICON_MONTHLY_SPENT
 from .entity import BaseEntity
 from .hub import RohlikAccount
-from .utils import extract_delivery_datetime, calculate_current_month_orders_total
+from .utils import extract_delivery_datetime, calculate_current_month_orders_total, get_earliest_order
 
 SCAN_INTERVAL = timedelta(seconds=600)
 
@@ -598,13 +598,22 @@ class NextOrderSince(BaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Returns remaining orders without limit."""
-        if len(self._rohlik_account.data['next_order']) > 0:
-            slot_start = datetime.strptime(self._rohlik_account.data["next_order"][0].get("deliverySlot", {}).get("since", None),
-                                 "%Y-%m-%dT%H:%M:%S.%f%z")
-            return slot_start
-        else:
-            return None
+        """Returns start of delivery window for the earliest order."""
+        earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
+        if earliest_order:
+            try:
+                slot_start = datetime.strptime(earliest_order.get("deliverySlot", {}).get("since", None),
+                                     "%Y-%m-%dT%H:%M:%S.%f%z")
+                return slot_start
+            except (ValueError, TypeError):
+                # Try without microseconds if the format doesn't match
+                try:
+                    slot_start = datetime.strptime(earliest_order.get("deliverySlot", {}).get("since", None),
+                                         "%Y-%m-%dT%H:%M:%S%z")
+                    return slot_start
+                except (ValueError, TypeError):
+                    return None
+        return None
 
     @property
     def icon(self) -> str:
@@ -625,13 +634,22 @@ class NextOrderTill(BaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Returns remaining orders without limit."""
-        if len(self._rohlik_account.data['next_order']) > 0:
-            slot_start = datetime.strptime(self._rohlik_account.data["next_order"][0].get("deliverySlot", {}).get("till", None),
+        """Returns end of delivery window for the earliest order."""
+        earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
+        if earliest_order:
+            try:
+                slot_end = datetime.strptime(earliest_order.get("deliverySlot", {}).get("till", None),
                                  "%Y-%m-%dT%H:%M:%S.%f%z")
-            return slot_start
-        else:
-            return None
+                return slot_end
+            except (ValueError, TypeError):
+                # Try without microseconds if the format doesn't match
+                try:
+                    slot_end = datetime.strptime(earliest_order.get("deliverySlot", {}).get("till", None),
+                                         "%Y-%m-%dT%H:%M:%S%z")
+                    return slot_end
+                except (ValueError, TypeError):
+                    return None
+        return None
 
     @property
     def icon(self) -> str:
