@@ -436,7 +436,6 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
     _attr_translation_key = "monthly_spent"
     _attr_should_poll = False
     _attr_state_class = SensorStateClass.TOTAL
-    _attr_native_unit_of_measurement = "CZK"
 
     def __init__(self, rohlik_account: RohlikAccount) -> None:
         super().__init__(rohlik_account)
