@@ -20,7 +20,7 @@ from .const import DOMAIN, ICON_UPDATE, ICON_CREDIT, ICON_NO_LIMIT, ICON_FREE_EX
     ICON_NEXT_ORDER_TILL, ICON_INFO, ICON_DELIVERY_TIME, ICON_MONTHLY_SPENT
 from .entity import BaseEntity
 from .hub import RohlikAccount
-from .utils import extract_delivery_datetime, calculate_current_month_orders_total, get_earliest_order
+from .utils import extract_delivery_datetime, get_earliest_order, parse_delivery_datetime_string
 
 SCAN_INTERVAL = timedelta(seconds=600)
 
@@ -441,7 +441,7 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         super().__init__(rohlik_account)
         self._monthly_total: float = 0.0
         self._processed_orders: set[str] = set()  # Store order IDs
-        self._current_month: str = datetime.now().strftime("%Y-%m")
+        self._current_month: str = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m")
         self._last_reset: datetime | None = None
 
     def _is_order_final(self, order: dict) -> bool:
@@ -480,18 +480,18 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         if (last_state := await self.async_get_last_state()) is not None:
             self._monthly_total = last_state.attributes.get("monthly_total", 0.0)
             self._processed_orders = set(last_state.attributes.get("processed_orders", []))
-            self._current_month = last_state.attributes.get("current_month", datetime.now().strftime("%Y-%m"))
+            self._current_month = last_state.attributes.get("current_month", datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m"))
             if last_reset_str := last_state.attributes.get("last_reset"):
                 self._last_reset = datetime.fromisoformat(last_reset_str)
         
         self._check_and_reset_month()
         self._process_new_orders()
         
-        self._rohlik_account.register_callback(self.async_write_ha_state)
+        self._rohlik_account.register_callback(self._handle_coordinator_update)
 
     def _check_and_reset_month(self) -> None:
         """Reset total if month changed."""
-        current_month = datetime.now().strftime("%Y-%m")
+        current_month = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m")
         if current_month != self._current_month:
             _LOGGER.info(f"Month changed from {self._current_month} to {current_month}, resetting monthly total")
             self._monthly_total = 0.0
@@ -509,7 +509,7 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         if not orders:
             return
         
-        current_month_pattern = datetime.now().strftime("%Y-%m-")
+        current_month_pattern = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m-")
         new_orders_count = 0
         
         for order in orders:
@@ -554,11 +554,15 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         if new_orders_count > 0:
             _LOGGER.info(f"Processed {new_orders_count} new order(s). Monthly total: {self._monthly_total} CZK")
 
+    async def _handle_coordinator_update(self) -> None:
+        """Handle coordinator updates by processing new orders and updating state."""
+        self._check_and_reset_month()
+        self._process_new_orders()
+        await self.async_write_ha_state()
+
     @property
     def native_value(self) -> float | None:
         """Returns amount spent in current month."""
-        self._check_and_reset_month()
-        self._process_new_orders()
         return self._monthly_total if self._monthly_total > 0 else 0.0
 
     @property
@@ -577,7 +581,7 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         return ICON_MONTHLY_SPENT
 
     async def async_will_remove_from_hass(self) -> None:
-        self._rohlik_account.remove_callback(self.async_write_ha_state)
+        self._rohlik_account.remove_callback(self._handle_coordinator_update)
 
 
 class NoLimitOrders(BaseEntity, SensorEntity):
@@ -735,18 +739,8 @@ class NextOrderSince(BaseEntity, SensorEntity):
         """Returns start of delivery window for the earliest order."""
         earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
         if earliest_order:
-            try:
-                slot_start = datetime.strptime(earliest_order.get("deliverySlot", {}).get("since", None),
-                                     "%Y-%m-%dT%H:%M:%S.%f%z")
-                return slot_start
-            except (ValueError, TypeError):
-                # Try without microseconds if the format doesn't match
-                try:
-                    slot_start = datetime.strptime(earliest_order.get("deliverySlot", {}).get("since", None),
-                                         "%Y-%m-%dT%H:%M:%S%z")
-                    return slot_start
-                except (ValueError, TypeError):
-                    return None
+            since_str = earliest_order.get("deliverySlot", {}).get("since", None)
+            return parse_delivery_datetime_string(since_str)
         return None
 
     @property
@@ -771,18 +765,8 @@ class NextOrderTill(BaseEntity, SensorEntity):
         """Returns end of delivery window for the earliest order."""
         earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
         if earliest_order:
-            try:
-                slot_end = datetime.strptime(earliest_order.get("deliverySlot", {}).get("till", None),
-                                 "%Y-%m-%dT%H:%M:%S.%f%z")
-                return slot_end
-            except (ValueError, TypeError):
-                # Try without microseconds if the format doesn't match
-                try:
-                    slot_end = datetime.strptime(earliest_order.get("deliverySlot", {}).get("till", None),
-                                         "%Y-%m-%dT%H:%M:%S%z")
-                    return slot_end
-                except (ValueError, TypeError):
-                    return None
+            till_str = earliest_order.get("deliverySlot", {}).get("till", None)
+            return parse_delivery_datetime_string(till_str)
         return None
 
     @property

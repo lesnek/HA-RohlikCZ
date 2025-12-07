@@ -162,6 +162,30 @@ def extract_delivery_datetime(text: str) -> datetime | None:
     return None
 
 
+def parse_delivery_datetime_string(datetime_str: str) -> datetime | None:
+    """
+    Parse a delivery datetime string with fallback for different formats.
+    
+    Args:
+        datetime_str (str): Datetime string to parse
+        
+    Returns:
+        datetime: Parsed datetime object, or None if parsing fails
+    """
+    if datetime_str is None:
+        return None
+    
+    try:
+        # Try parsing with microseconds first
+        return datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+    except ValueError:
+        # Try without microseconds if the format doesn't match
+        try:
+            return datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S%z")
+        except ValueError:
+            return None
+
+
 def get_earliest_order(orders: list) -> dict | None:
     """
     Find the order with the earliest delivery time from a list of orders.
@@ -172,7 +196,7 @@ def get_earliest_order(orders: list) -> dict | None:
     Returns:
         dict: The order with the earliest delivery time, or None if no valid order found
     """
-    if not orders or len(orders) == 0:
+    if not orders:
         return None
 
     earliest_order = None
