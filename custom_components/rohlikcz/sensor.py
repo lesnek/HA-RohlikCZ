@@ -487,7 +487,7 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         self._check_and_reset_month()
         self._process_new_orders()
         
-        self._rohlik_account.register_callback(self._handle_coordinator_update)
+        self._rohlik_account.register_callback(self.async_write_ha_state)
 
     def _check_and_reset_month(self) -> None:
         """Reset total if month changed."""
@@ -554,15 +554,11 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         if new_orders_count > 0:
             _LOGGER.info(f"Processed {new_orders_count} new order(s). Monthly total: {self._monthly_total} CZK")
 
-    async def _handle_coordinator_update(self) -> None:
-        """Handle coordinator updates by processing new orders and updating state."""
-        self._check_and_reset_month()
-        self._process_new_orders()
-        await self.async_write_ha_state()
-
     @property
     def native_value(self) -> float | None:
         """Returns amount spent in current month."""
+        self._check_and_reset_month()
+        self._process_new_orders()
         return self._monthly_total if self._monthly_total > 0 else 0.0
 
     @property
@@ -581,7 +577,7 @@ class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
         return ICON_MONTHLY_SPENT
 
     async def async_will_remove_from_hass(self) -> None:
-        self._rohlik_account.remove_callback(self._handle_coordinator_update)
+        self._rohlik_account.remove_callback(self.async_write_ha_state)
 
 
 class NoLimitOrders(BaseEntity, SensorEntity):
