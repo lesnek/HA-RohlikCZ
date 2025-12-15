@@ -72,9 +72,27 @@ The integration provides the following entities:
 - **Slot Standard Time** - Timestamp of nearest standard delivery slot available
 - **Slot Eco Time** - Timestamp of nearest eco delivery slot available
 - **Delivery Slot Start** - Timestamp of beginning of delivery window for order made
-- **Delivery Slot Start** - Timestamp of end of delivery window for order made
+- **Delivery Slot End** - Timestamp of end of delivery window for order made
 - **Delivery Time** - Timestamp of predicted exact delivery time for order made
 - **Monthly Spent** - Total amount spent in the current month
+
+### Calendar
+
+- **orders** (`calendar.{device_name}_orders`) - Calendar entity showing all delivery windows as events
+  - **Event Title**: Order number (e.g., "Order 123456789")
+  - **Event Start**: Delivery window start time (`deliverySlot.since`)
+  - **Event End**: Delivery window end time (`deliverySlot.till`)
+  - **Event Description**: Optional details including order status, item count, and price
+  - **Event Sources**: 
+    - Upcoming orders from `next_order` endpoint
+    - Recent delivered orders (last 50) from `delivered_orders` endpoint
+  - **Event Lifecycle**: Events are automatically created when orders appear in the API responses and removed when they disappear (e.g., when a delivered order falls out of the last 50)
+  - **State**: `on` when there's an active delivery window (current time is within a delivery slot), `off` otherwise
+  - **Use Cases**: 
+    - View all delivery windows in Home Assistant's calendar UI
+    - Create automations that trigger during delivery windows
+    - Use `calendar.get_events` service to query upcoming deliveries
+    - Example automation: Turn on porch lights when delivery window starts
 
 ### Rohlik Services for Home Assistant
 

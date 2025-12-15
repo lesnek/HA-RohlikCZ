@@ -13,7 +13,7 @@ from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor","todo"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "todo", "calendar"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
