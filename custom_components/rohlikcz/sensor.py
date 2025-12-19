@@ -125,18 +125,20 @@ class DeliveryTime(BaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         """Returns time of delivery."""
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
-
-           return extract_delivery_datetime(delivery_info[0].get("content", ""))
+            return extract_delivery_datetime(delivery_info[0].get("content", ""))
 
         else:
+            # If no delivery announcement but order exists, get delivery time from order data
             if self._rohlik_account.is_ordered:
-                return self.native_value
-            else:
-                return None
+                earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
+                if earliest_order:
+                    since_str = earliest_order.get("deliverySlot", {}).get("since", None)
+                    return parse_delivery_datetime_string(since_str)
+            return None
 
 
     @property
