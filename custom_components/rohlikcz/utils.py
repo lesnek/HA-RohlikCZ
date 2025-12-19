@@ -176,13 +176,21 @@ def parse_delivery_datetime_string(datetime_str: str) -> datetime | None:
         return None
     
     try:
-        # Try parsing with microseconds first
+        # Try parsing with microseconds first (format: 2025-12-18T08:15:01.000+0100)
         return datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S.%f%z")
     except ValueError:
         # Try without microseconds if the format doesn't match
         try:
             return datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S%z")
         except ValueError:
+            # Try with timezone with colon separator (format: 2025-12-18T08:15:01.000+01:00)
+            try:
+                # Replace +0100 with +01:00 for parsing
+                if datetime_str[-5] in ['+', '-'] and ':' not in datetime_str[-5:]:
+                    datetime_str_colon = datetime_str[:-2] + ':' + datetime_str[-2:]
+                    return datetime.strptime(datetime_str_colon, "%Y-%m-%dT%H:%M:%S.%f%z")
+            except (ValueError, IndexError):
+                pass
             return None
 
 
@@ -288,12 +296,14 @@ def parse_orders_for_calendar(next_orders: list[dict], delivered_orders: list[di
             
             if not start_dt or not end_dt:
                 skipped_no_datetime += 1
-                _logger.debug("Order %s: Failed to parse datetime - since: %s, till: %s", order_id_str, since_str, till_str)
+                _logger.warning("Order %s: Failed to parse datetime - since: %s (parsed: %s), till: %s (parsed: %s)", 
+                              order_id_str, since_str, start_dt, till_str, end_dt)
                 continue
             
             # Ensure start is before end
             if start_dt >= end_dt:
                 skipped_invalid += 1
+                _logger.warning("Order %s: Invalid time range - start (%s) >= end (%s)", order_id_str, start_dt, end_dt)
                 continue
             
             normalized_order = {
@@ -345,12 +355,14 @@ def parse_orders_for_calendar(next_orders: list[dict], delivered_orders: list[di
             
             if not start_dt or not end_dt:
                 skipped_no_datetime += 1
-                _logger.debug("Order %s: Failed to parse datetime - since: %s, till: %s", order_id_str, since_str, till_str)
+                _logger.warning("Order %s: Failed to parse datetime - since: %s (parsed: %s), till: %s (parsed: %s)", 
+                              order_id_str, since_str, start_dt, till_str, end_dt)
                 continue
             
             # Ensure start is before end
             if start_dt >= end_dt:
                 skipped_invalid += 1
+                _logger.warning("Order %s: Invalid time range - start (%s) >= end (%s)", order_id_str, start_dt, end_dt)
                 continue
             
             normalized_order = {
@@ -370,9 +382,9 @@ def parse_orders_for_calendar(next_orders: list[dict], delivered_orders: list[di
             _logger.debug("Error processing delivered_order %s: %s", order.get('id'), e)
             continue
     
-    _logger.debug(
+    _logger.info(
         "parse_orders_for_calendar: Processed %d next_orders + %d delivered_orders, "
-        "created %d events, skipped: %d no slot, %d no datetime, %d invalid",
+        "created %d normalized orders, skipped: %d no slot, %d no datetime, %d invalid",
         len(next_orders) if next_orders else 0,
         len(delivered_orders) if delivered_orders else 0,
         len(normalized_orders),
