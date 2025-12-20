@@ -138,6 +138,11 @@
       "shopping_cart": {
         "name": "Nákupní košík"
       }
+    },
+    "calendar": {
+      "delivery_calendar": {
+        "name": "Kalendář objednávek"
+      }
     }
   }
 }

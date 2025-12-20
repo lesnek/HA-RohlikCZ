@@ -138,6 +138,11 @@
       "shopping_cart": {
         "name": "Shopping Cart"
       }
+    },
+    "calendar": {
+      "delivery_calendar": {
+        "name": "Orders Calendar"
+      }
     }
   }
 }
