@@ -65,11 +65,17 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
-class DeliveryInfo(BaseEntity, SensorEntity):
+class DeliveryInfo(BaseEntity, SensorEntity, RestoreEntity):
     """Sensor for showing delivery information."""
 
     _attr_translation_key = "delivery_info"
     _attr_should_poll = False
+
+    def __init__(self, rohlik_account: RohlikAccount) -> None:
+        """Initialize the delivery info sensor."""
+        super().__init__(rohlik_account)
+        self._last_value: str | None = None
+        self._last_attributes: Mapping[str, Any] | None = None
 
     @property
     def native_value(self) -> str | None:
@@ -77,17 +83,20 @@ class DeliveryInfo(BaseEntity, SensorEntity):
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
             clean_text = re.sub(r'<[^>]+>', '', delivery_info[0]["content"])
+            self._last_value = clean_text
             return clean_text
         else:
-            return None
-
+            # If announcements stopped but order still exists, preserve last value
+            if self._rohlik_account.is_ordered and self._last_value is not None:
+                return self._last_value
+            else:
+                return None
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """ Get extra state attributes. """
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
-
             delivery_time = extract_delivery_datetime(delivery_info[0].get("content", ""))
 
             if delivery_info[0].get("additionalContent", None):
@@ -96,54 +105,90 @@ class DeliveryInfo(BaseEntity, SensorEntity):
             else:
                 additional_info = None
 
-            return {
+            attrs = {
                 "Delivery time (deprecated, use new entity)": delivery_time,
                 "Order Id": str(delivery_info[0].get("id")),
                 "Updated At": datetime.fromisoformat(delivery_info[0].get("updatedAt")),
                 "Title": delivery_info[0].get("title"),
                 "Additional Content": additional_info
             }
-
+            self._last_attributes = attrs
+            return attrs
         else:
-            return None
+            # If announcements stopped but order still exists, preserve last attributes
+            if self._rohlik_account.is_ordered and self._last_attributes is not None:
+                return self._last_attributes
+            else:
+                return None
 
     @property
     def icon(self) -> str:
         return ICON_INFO
 
     async def async_added_to_hass(self) -> None:
+        """Restore state when added to HA."""
+        await super().async_added_to_hass()
+        
+        # Restore last state if available
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in (STATE_UNAVAILABLE, "unknown", "None"):
+                self._last_value = last_state.state
+            if last_state.attributes:
+                self._last_attributes = dict(last_state.attributes)
+        
         self._rohlik_account.register_callback(self.async_write_ha_state)
 
     async def async_will_remove_from_hass(self) -> None:
         self._rohlik_account.remove_callback(self.async_write_ha_state)
 
-class DeliveryTime(BaseEntity, SensorEntity):
+class DeliveryTime(BaseEntity, SensorEntity, RestoreEntity):
     """Sensor for showing delivery time."""
 
     _attr_translation_key = "delivery_time"
     _attr_should_poll = False
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
+    def __init__(self, rohlik_account: RohlikAccount) -> None:
+        """Initialize the delivery time sensor."""
+        super().__init__(rohlik_account)
+        self._last_value: datetime | None = None
+
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         """Returns time of delivery."""
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
-
-           return extract_delivery_datetime(delivery_info[0].get("content", ""))
-
+            delivery_time = extract_delivery_datetime(delivery_info[0].get("content", ""))
+            self._last_value = delivery_time
+            return delivery_time
         else:
-            if self._rohlik_account.is_ordered:
-                return self.native_value
+            # If announcements stopped but order still exists, preserve last value
+            if self._rohlik_account.is_ordered and self._last_value is not None:
+                return self._last_value
             else:
                 return None
-
 
     @property
     def icon(self) -> str:
         return ICON_DELIVERY_TIME
 
     async def async_added_to_hass(self) -> None:
+        """Restore state when added to HA."""
+        await super().async_added_to_hass()
+        
+        # Restore last state if available
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in (STATE_UNAVAILABLE, "unknown", "None"):
+                # Try to parse the restored state
+                try:
+                    if isinstance(last_state.state, datetime):
+                        self._last_value = last_state.state
+                    elif isinstance(last_state.state, str):
+                        # Try to parse ISO format
+                        self._last_value = datetime.fromisoformat(last_state.state.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    pass
+        
         self._rohlik_account.register_callback(self.async_write_ha_state)
 
     async def async_will_remove_from_hass(self) -> None:
