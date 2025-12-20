@@ -9,6 +9,7 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, ICON_DELIVERY_CALENDAR
@@ -29,7 +30,7 @@ async def async_setup_entry(
     async_add_entities([RohlikDeliveryCalendar(rohlik_hub)])
 
 
-class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
+class RohlikDeliveryCalendar(BaseEntity, CalendarEntity, RestoreEntity):
     """Calendar entity for Rohlik.cz delivery windows."""
 
     _attr_translation_key = "delivery_calendar"
@@ -41,6 +42,7 @@ class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
         super().__init__(rohlik_account)
         self._events: list[CalendarEvent] = []
         self._events_by_order_id: dict[str, CalendarEvent] = {}  # Track events by order ID
+        self._stored_delivery_slots: dict[str, dict[str, str]] = {}  # order_id -> {start: iso, end: iso}
 
     def _extract_orders_list(self, data_key: str) -> list:
         """Extract orders list from API response, handling wrapped responses."""
@@ -81,14 +83,20 @@ class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
 
         # Get all order IDs from both sources (for tracking which orders still exist)
         all_order_ids = set()
+        next_order_ids = set()
+        delivered_order_ids = set()
         for order in (next_orders or []):
             order_id = order.get('id')
             if order_id:
-                all_order_ids.add(str(order_id))
+                order_id_str = str(order_id)
+                all_order_ids.add(order_id_str)
+                next_order_ids.add(order_id_str)
         for order in (delivered_orders or []):
             order_id = order.get('id')
             if order_id:
-                all_order_ids.add(str(order_id))
+                order_id_str = str(order_id)
+                all_order_ids.add(order_id_str)
+                delivered_order_ids.add(order_id_str)
 
         # Remove events for orders that are no longer in either list
         orders_to_remove = set(self._events_by_order_id.keys()) - all_order_ids
@@ -106,13 +114,19 @@ class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
         for order in normalized_orders:
             order_id = order['id']
             try:
+                # Store delivery slot info for persistence (needed for delivered orders after restart)
+                self._stored_delivery_slots[order_id] = {
+                    "start": order["start"].isoformat(),
+                    "end": order["end"].isoformat(),
+                }
+                
                 # Build description with optional details
                 description_parts = []
                 if order.get("status"):
                     description_parts.append(f"Status: {order['status']}")
                 if order.get("items_count") is not None:
                     description_parts.append(f"Items: {order['items_count']}")
-                if order.get("price"):
+                if order.get("price") is not None:
                     description_parts.append(f"Price: {order['price']} CZK")
                 description = "\n".join(description_parts) if description_parts else None
 
@@ -140,6 +154,75 @@ class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
             except (KeyError, TypeError) as e:
                 _LOGGER.warning("Error creating calendar event for order %s: %s", order.get('id'), e)
                 continue
+        
+        # Recreate events for delivered orders that don't have delivery slot info
+        # but we have stored delivery slot info from when they were in next_order
+        for order in (delivered_orders or []):
+            order_id = str(order.get('id', ''))
+            if not order_id:
+                continue
+            
+            # Update existing event to mark as delivered if needed
+            if order_id in self._events_by_order_id:
+                existing_event = self._events_by_order_id[order_id]
+                # Check if order is delivered (in delivered_orders but not in next_orders)
+                if order_id in delivered_order_ids and order_id not in next_order_ids:
+                    if not existing_event.summary.startswith("[Delivered]"):
+                        # Update the event summary to include delivered tag
+                        new_summary = f"[Delivered] {existing_event.summary}"
+                        self._events_by_order_id[order_id] = CalendarEvent(
+                            start=existing_event.start,
+                            end=existing_event.end,
+                            summary=new_summary,
+                            description=existing_event.description,
+                            uid=existing_event.uid,
+                        )
+                        _LOGGER.debug("Tagged order %s as delivered", order_id)
+                continue
+            
+            # Check if we have stored delivery slot info for this order
+            if order_id in self._stored_delivery_slots:
+                try:
+                    slot_info = self._stored_delivery_slots[order_id]
+                    start_dt = dt_util.parse_datetime(slot_info["start"])
+                    end_dt = dt_util.parse_datetime(slot_info["end"])
+                    
+                    if start_dt and end_dt:
+                        # Build description with optional details
+                        description_parts = []
+                        if order.get("status"):
+                            description_parts.append(f"Status: {order['status']}")
+                        if order.get("itemsCount") is not None:
+                            description_parts.append(f"Items: {order['itemsCount']}")
+                        price_amount = order.get("priceComposition", {}).get("total", {}).get("amount")
+                        if price_amount is not None:
+                            description_parts.append(f"Price: {price_amount} CZK")
+                        description = "\n".join(description_parts) if description_parts else None
+                        
+                        event = CalendarEvent(
+                            start=start_dt,
+                            end=end_dt,
+                            summary=f"[Delivered] Order {order_id}",
+                            description=description,
+                            uid=order_id,
+                        )
+                        
+                        self._events_by_order_id[order_id] = event
+                        _LOGGER.debug(
+                            "Recreated calendar event for delivered order %s using stored delivery slot: %s to %s",
+                            order_id,
+                            start_dt,
+                            end_dt
+                        )
+                except (KeyError, TypeError, ValueError) as e:
+                    _LOGGER.warning("Error recreating calendar event for delivered order %s: %s", order_id, e)
+                    continue
+        
+        # Clean up stored delivery slots for orders that no longer exist
+        orders_to_remove_slots = set(self._stored_delivery_slots.keys()) - all_order_ids
+        for order_id in orders_to_remove_slots:
+            del self._stored_delivery_slots[order_id]
+            _LOGGER.debug("Removed stored delivery slot for order %s (no longer in next_order or delivered_orders)", order_id)
 
         # Rebuild events list from dict (includes both new events and kept events)
         self._events = list(self._events_by_order_id.values())
@@ -195,12 +278,27 @@ class RohlikDeliveryCalendar(BaseEntity, CalendarEntity):
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
         await super().async_added_to_hass()
+        
+        # Restore stored delivery slot information from previous session
+        if (last_state := await self.async_get_last_state()) is not None:
+            stored_slots = last_state.attributes.get("stored_delivery_slots", {})
+            if stored_slots:
+                self._stored_delivery_slots = stored_slots
+                _LOGGER.debug("Restored %d stored delivery slots from previous session", len(stored_slots))
+        
         # Initial update
         _LOGGER.debug("Calendar entity added to hass, updating events")
         self._update_events()
         # Register callback for updates
         self._rohlik_account.register_callback(self._on_data_update)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes to persist delivery slot information."""
+        return {
+            "stored_delivery_slots": self._stored_delivery_slots,
+        }
+    
     def _on_data_update(self) -> None:
         """Handle data updates from RohlikAccount."""
         _LOGGER.debug("Calendar received data update callback")

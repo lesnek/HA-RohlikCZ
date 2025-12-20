@@ -141,7 +141,7 @@
     },
     "calendar": {
       "delivery_calendar": {
-        "name": "orders"
+        "name": "Orders Calendar"
       }
     }
   }

@@ -141,7 +141,7 @@
     },
     "calendar": {
       "delivery_calendar": {
-        "name": "objednávky"
+        "name": "Kalendář objednávek"
       }
     }
   }
