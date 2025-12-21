@@ -47,7 +47,7 @@
         }
       },
       "is_premium": {
-        "name": "Premium Membership",
+        "name": "Xtra Membership",
         "state": {
           "on": "Yes",
           "off": "No"
@@ -96,7 +96,7 @@
         "unit_of_measurement": "pcs"
       },
       "premium_days": {
-        "name": "Premium Days Remaining"
+        "name": "Xtra Days Remaining"
       },
       "cart_price": {
         "name": "Cart Total",
