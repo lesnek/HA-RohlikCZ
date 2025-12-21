@@ -47,7 +47,7 @@
         }
       },
       "is_premium": {
-        "name": "Premium členství",
+        "name": "Xtra členství",
         "state": {
           "on": "Ano",
           "off": "Ne"
@@ -96,7 +96,7 @@
         "unit_of_measurement": "ks"
       },
       "premium_days": {
-        "name": "Zbývající dny Premium"
+        "name": "Zbývající dny Xtra"
       },
       "cart_price": {
         "name": "Cena košíku",
@@ -137,6 +137,11 @@
     "todo": {
       "shopping_cart": {
         "name": "Nákupní košík"
+      }
+    },
+    "calendar": {
+      "delivery_calendar": {
+        "name": "Kalendář objednávek"
       }
     }
   }

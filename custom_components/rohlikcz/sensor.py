@@ -9,17 +9,18 @@ from collections.abc import Mapping
 from datetime import timedelta, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from .const import DOMAIN, ICON_UPDATE, ICON_CREDIT, ICON_NO_LIMIT, ICON_FREE_EXPRESS, ICON_DELIVERY, ICON_BAGS, \
     ICON_CART, ICON_ACCOUNT, ICON_EMAIL, ICON_PHONE, ICON_PREMIUM_DAYS, ICON_LAST_ORDER, ICON_NEXT_ORDER_SINCE, \
     ICON_NEXT_ORDER_TILL, ICON_INFO, ICON_DELIVERY_TIME, ICON_MONTHLY_SPENT
 from .entity import BaseEntity
 from .hub import RohlikAccount
-from .utils import extract_delivery_datetime, calculate_current_month_orders_total
+from .utils import extract_delivery_datetime, get_earliest_order, parse_delivery_datetime_string
 
 SCAN_INTERVAL = timedelta(seconds=600)
 
@@ -64,11 +65,17 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
-class DeliveryInfo(BaseEntity, SensorEntity):
+class DeliveryInfo(BaseEntity, SensorEntity, RestoreEntity):
     """Sensor for showing delivery information."""
 
     _attr_translation_key = "delivery_info"
     _attr_should_poll = False
+
+    def __init__(self, rohlik_account: RohlikAccount) -> None:
+        """Initialize the delivery info sensor."""
+        super().__init__(rohlik_account)
+        self._last_value: str | None = None
+        self._last_attributes: Mapping[str, Any] | None = None
 
     @property
     def native_value(self) -> str | None:
@@ -76,17 +83,20 @@ class DeliveryInfo(BaseEntity, SensorEntity):
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
             clean_text = re.sub(r'<[^>]+>', '', delivery_info[0]["content"])
+            self._last_value = clean_text
             return clean_text
         else:
-            return None
-
+            # If announcements stopped but order still exists, preserve last value
+            if self._rohlik_account.is_ordered and self._last_value is not None:
+                return self._last_value
+            else:
+                return None
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """ Get extra state attributes. """
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
-
             delivery_time = extract_delivery_datetime(delivery_info[0].get("content", ""))
 
             if delivery_info[0].get("additionalContent", None):
@@ -95,54 +105,93 @@ class DeliveryInfo(BaseEntity, SensorEntity):
             else:
                 additional_info = None
 
-            return {
+            attrs = {
                 "Delivery time (deprecated, use new entity)": delivery_time,
                 "Order Id": str(delivery_info[0].get("id")),
                 "Updated At": datetime.fromisoformat(delivery_info[0].get("updatedAt")),
                 "Title": delivery_info[0].get("title"),
                 "Additional Content": additional_info
             }
-
+            self._last_attributes = attrs
+            return attrs
         else:
-            return None
+            # If announcements stopped but order still exists, preserve last attributes
+            if self._rohlik_account.is_ordered and self._last_attributes is not None:
+                return self._last_attributes
+            else:
+                return None
 
     @property
     def icon(self) -> str:
         return ICON_INFO
 
     async def async_added_to_hass(self) -> None:
+        """Restore state when added to HA."""
+        await super().async_added_to_hass()
+        
+        # Restore last state if available
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in (STATE_UNAVAILABLE, "unknown", "None"):
+                self._last_value = last_state.state
+            if last_state.attributes:
+                self._last_attributes = dict(last_state.attributes)
+        
         self._rohlik_account.register_callback(self.async_write_ha_state)
 
     async def async_will_remove_from_hass(self) -> None:
         self._rohlik_account.remove_callback(self.async_write_ha_state)
 
-class DeliveryTime(BaseEntity, SensorEntity):
+class DeliveryTime(BaseEntity, SensorEntity, RestoreEntity):
     """Sensor for showing delivery time."""
 
     _attr_translation_key = "delivery_time"
     _attr_should_poll = False
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
+    def __init__(self, rohlik_account: RohlikAccount) -> None:
+        """Initialize the delivery time sensor."""
+        super().__init__(rohlik_account)
+        self._last_value: datetime | None = None
+
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         """Returns time of delivery."""
         delivery_info: list = self._rohlik_account.data["delivery_announcements"]["data"]["announcements"]
         if len(delivery_info) > 0:
-
-           return extract_delivery_datetime(delivery_info[0].get("content", ""))
-
+            delivery_time = extract_delivery_datetime(delivery_info[0].get("content", ""))
+            self._last_value = delivery_time
+            return delivery_time
         else:
-            if self._rohlik_account.is_ordered:
-                return self.native_value
+            # If announcements stopped but order still exists, preserve last value
+            if self._rohlik_account.is_ordered and self._last_value is not None:
+                return self._last_value
             else:
                 return None
-
 
     @property
     def icon(self) -> str:
         return ICON_DELIVERY_TIME
 
     async def async_added_to_hass(self) -> None:
+        """Restore state when added to HA."""
+        await super().async_added_to_hass()
+        
+        # Restore last state if available
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in (STATE_UNAVAILABLE, "unknown", "None"):
+                # Try to parse the restored state
+                try:
+                    if isinstance(last_state.state, datetime):
+                        self._last_value = last_state.state
+                    elif isinstance(last_state.state, str):
+                        # Try to parse ISO format
+                        self._last_value = datetime.fromisoformat(last_state.state.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    _LOGGER.debug(
+                        "Failed to restore delivery time from last state %r",
+                        last_state.state,
+                    )
+        
         self._rohlik_account.register_callback(self.async_write_ha_state)
 
     async def async_will_remove_from_hass(self) -> None:
@@ -424,23 +473,156 @@ class CreditAmount(BaseEntity, SensorEntity):
         self._rohlik_account.remove_callback(self.async_write_ha_state)
 
 
-class MonthlySpent(BaseEntity, SensorEntity):
-    """Sensor for amount spent in current month."""
+class MonthlySpent(BaseEntity, SensorEntity, RestoreEntity):
+    """Sensor for amount spent in current month with HA-side accumulation.
+    
+    Only tracks orders that are delivered and closed (have final price).
+    Orders from the delivered_orders endpoint should all be finalized.
+    Uses Home Assistant's restore state to persist monthly totals across restarts.
+    """
 
     _attr_translation_key = "monthly_spent"
     _attr_should_poll = False
+    _attr_state_class = SensorStateClass.TOTAL
+
+    def __init__(self, rohlik_account: RohlikAccount) -> None:
+        super().__init__(rohlik_account)
+        self._monthly_total: float = 0.0
+        self._processed_orders: set[str] = set()  # Store order IDs
+        self._current_month: str = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m")
+        self._last_reset: datetime | None = None
+
+    def _is_order_final(self, order: dict) -> bool:
+        """
+        Verify order has a final price.
+        
+        Since orders come from the 'delivered_orders' endpoint, they should be finalized.
+        We verify by checking that priceComposition exists and has a valid amount.
+        """
+        # Check if priceComposition exists
+        price_comp = order.get('priceComposition')
+        if not price_comp:
+            return False
+        
+        # Check if total exists
+        total = price_comp.get('total')
+        if not total:
+            return False
+        
+        # Check if amount exists and is a valid number
+        amount = total.get('amount')
+        if amount is None:
+            return False
+        
+        # Verify it's a valid number
+        try:
+            float(amount)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    async def async_added_to_hass(self) -> None:
+        """Restore state when added to HA."""
+        await super().async_added_to_hass()
+        
+        if (last_state := await self.async_get_last_state()) is not None:
+            self._monthly_total = last_state.attributes.get("monthly_total", 0.0)
+            self._processed_orders = set(last_state.attributes.get("processed_orders", []))
+            self._current_month = last_state.attributes.get("current_month", datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m"))
+            if last_reset_str := last_state.attributes.get("last_reset"):
+                self._last_reset = datetime.fromisoformat(last_reset_str)
+        
+        self._check_and_reset_month()
+        self._process_new_orders()
+        
+        self._rohlik_account.register_callback(self.async_write_ha_state)
+
+    def _check_and_reset_month(self) -> None:
+        """Reset total if month changed."""
+        current_month = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m")
+        if current_month != self._current_month:
+            _LOGGER.info(f"Month changed from {self._current_month} to {current_month}, resetting monthly total")
+            self._monthly_total = 0.0
+            self._processed_orders = set()
+            self._current_month = current_month
+            self._last_reset = datetime.now(ZoneInfo("Europe/Prague"))
+
+    def _process_new_orders(self) -> None:
+        """Process new orders and add to total.
+        
+        Only processes orders that are delivered and closed (have final price).
+        Uses order ID for unique identification.
+        """
+        orders = self._rohlik_account.data.get('delivered_orders', [])
+        if not orders:
+            return
+        
+        current_month_pattern = datetime.now(ZoneInfo("Europe/Prague")).strftime("%Y-%m-")
+        new_orders_count = 0
+        
+        for order in orders:
+            try:
+                order_time = order.get('orderTime', '')
+                
+                # Only process orders from current month
+                if current_month_pattern not in order_time:
+                    continue
+                
+                # Verify order has final price (delivered and closed)
+                if not self._is_order_final(order):
+                    _LOGGER.debug(f"Order {order.get('id')} does not have final price, skipping")
+                    continue
+                
+                # Get order ID (unique identifier)
+                order_id = order.get('id')
+                if not order_id:
+                    _LOGGER.warning(f"Order missing ID, skipping: {order.get('orderTime')}")
+                    continue
+                
+                order_key = str(order_id)
+                
+                # Skip if already processed
+                if order_key in self._processed_orders:
+                    continue
+                
+                # Get the final price
+                amount = float(order['priceComposition']['total']['amount'])
+                
+                # Add to total and mark as processed
+                self._monthly_total += amount
+                self._processed_orders.add(order_key)
+                new_orders_count += 1
+                
+                _LOGGER.debug(f"Added order {order_id} with amount {amount} CZK. New total: {self._monthly_total} CZK")
+                
+            except (KeyError, ValueError, TypeError) as e:
+                _LOGGER.warning(f"Skipping order due to error: {e}, order ID: {order.get('id')}")
+                continue
+        
+        if new_orders_count > 0:
+            _LOGGER.info(f"Processed {new_orders_count} new order(s). Monthly total: {self._monthly_total} CZK")
 
     @property
     def native_value(self) -> float | None:
-        """Returns amount spend within last month."""
-        return calculate_current_month_orders_total(self._rohlik_account.data.get('delivered_orders', []))
+        """Returns amount spent in current month."""
+        self._check_and_reset_month()
+        self._process_new_orders()
+        return self._monthly_total if self._monthly_total > 0 else 0.0
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Store state for restoration."""
+        return {
+            "monthly_total": self._monthly_total,
+            "processed_orders": list(self._processed_orders),
+            "current_month": self._current_month,
+            "last_reset": self._last_reset.isoformat() if self._last_reset else None,
+            "processed_count": len(self._processed_orders)
+        }
 
     @property
     def icon(self) -> str:
         return ICON_MONTHLY_SPENT
-
-    async def async_added_to_hass(self) -> None:
-        self._rohlik_account.register_callback(self.async_write_ha_state)
 
     async def async_will_remove_from_hass(self) -> None:
         self._rohlik_account.remove_callback(self.async_write_ha_state)
@@ -598,13 +780,12 @@ class NextOrderSince(BaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Returns remaining orders without limit."""
-        if len(self._rohlik_account.data['next_order']) > 0:
-            slot_start = datetime.strptime(self._rohlik_account.data["next_order"][0].get("deliverySlot", {}).get("since", None),
-                                 "%Y-%m-%dT%H:%M:%S.%f%z")
-            return slot_start
-        else:
-            return None
+        """Returns start of delivery window for the earliest order."""
+        earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
+        if earliest_order:
+            since_str = earliest_order.get("deliverySlot", {}).get("since", None)
+            return parse_delivery_datetime_string(since_str)
+        return None
 
     @property
     def icon(self) -> str:
@@ -625,13 +806,12 @@ class NextOrderTill(BaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Returns remaining orders without limit."""
-        if len(self._rohlik_account.data['next_order']) > 0:
-            slot_start = datetime.strptime(self._rohlik_account.data["next_order"][0].get("deliverySlot", {}).get("till", None),
-                                 "%Y-%m-%dT%H:%M:%S.%f%z")
-            return slot_start
-        else:
-            return None
+        """Returns end of delivery window for the earliest order."""
+        earliest_order = get_earliest_order(self._rohlik_account.data.get('next_order', []))
+        if earliest_order:
+            till_str = earliest_order.get("deliverySlot", {}).get("till", None)
+            return parse_delivery_datetime_string(till_str)
+        return None
 
     @property
     def icon(self) -> str:
