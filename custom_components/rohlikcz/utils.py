@@ -190,6 +190,8 @@ def parse_delivery_datetime_string(datetime_str: str) -> datetime | None:
                     datetime_str_colon = datetime_str[:-2] + ':' + datetime_str[-2:]
                     return datetime.strptime(datetime_str_colon, "%Y-%m-%dT%H:%M:%S.%f%z")
             except (ValueError, IndexError):
+                # If normalization or parsing still fails (or the string is too short),
+                # fall through and let the function return None to signal parse failure.
                 pass
             return None
 
