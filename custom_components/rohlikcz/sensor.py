@@ -187,7 +187,10 @@ class DeliveryTime(BaseEntity, SensorEntity, RestoreEntity):
                         # Try to parse ISO format
                         self._last_value = datetime.fromisoformat(last_state.state.replace('Z', '+00:00'))
                 except (ValueError, AttributeError):
-                    pass
+                    _LOGGER.debug(
+                        "Failed to restore delivery time from last state %r",
+                        last_state.state,
+                    )
         
         self._rohlik_account.register_callback(self.async_write_ha_state)
 
