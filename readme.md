@@ -5,23 +5,11 @@ This custom component provides integration with [Rohlik.cz](https://www.rohlik.c
 > [!WARNING] 
 > This integration is made by reverse engineering API that is used by the rohlik.cz website. Use this integration at your own risk.
 
-## Scan to add to cart
-
-
-https://github.com/user-attachments/assets/799cb8c4-1468-404a-907e-3f6d9dd2cfbf
-
-
-You can now use barcode scanner, such as [here](https://github.com/dvejsada/ha-barcode-scanner) to add products directly to your rohlik.cz cart by scanning barcode. You can find the connected automations in the automations directory in this repository. 
- - Add to Cart: The automation will search for the product by its barcode in the product list and add it to your cart.
- - Update data: The automation will automatically download current barcode to product id file from this repo each day at 3 a.m.
-
-Please contribute the barcodes to this repo to grow the database!:)
-
 ## Installation
 
 ### Using [HACS](https://hacs.xyz/)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dvejsada&repository=HA-RohlikCZ&category=Integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=lesnek&repository=HA-RohlikCZ&category=Integration)
 
 ### Manual Installation
 
@@ -109,6 +97,40 @@ Integration provides these custom actions (service calls):
 
 The integration updates data from Rohlik.cz periodically every 10 minutes by default. The data includes your account details, premium status, delivery options, shopping cart, and more.
 You can also trigger an update using the "Update Data" action (service call).
+
+## Shopping List Dashboard Card
+
+A custom Lovelace card is included in the `www/` directory that displays a Rohlik.cz shopping list and lets you add items to your cart directly from the dashboard.
+
+### Installation
+
+1. Copy `www/rohlikcz-shopping-list-card.js` to your Home Assistant `config/www/` directory.
+2. In Home Assistant, go to **Settings → Dashboards → Resources** and add a new resource:
+   - **URL**: `/local/rohlikcz-shopping-list-card.js`
+   - **Type**: JavaScript module
+3. Reload the dashboard.
+
+### Card configuration
+
+Add the card via the dashboard UI (it will appear as **Rohlik Shopping List**) or add it manually in YAML:
+
+```yaml
+type: custom:rohlikcz-shopping-list-card
+config_entry_id: YOUR_CONFIG_ENTRY_ID
+shopping_list_id: YOUR_SHOPPING_LIST_ID
+title: My Shopping List   # optional
+domain: rohlikcz2         # optional, defaults to rohlikcz2
+```
+
+- **`config_entry_id`** — find this in **Settings → Devices & Services → Rohlik.cz → entry ID** (visible in the URL when you open the integration).
+- **`shopping_list_id`** — the ID of the shopping list from Rohlik.cz (use the **Get Shopping List** action in Developer Tools to verify it works first).
+
+### Features
+
+- Loads the shopping list on card render and displays name, brand, amount, and price for each item.
+- **+** button on each row adds that single item to your cart.
+- **Add all to cart** button adds every item in the list at once and shows per-item success/failure chips.
+- **↻ Refresh** button re-fetches the list from the API.
 
 ## Development
 
