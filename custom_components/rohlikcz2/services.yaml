@@ -143,3 +143,22 @@ search_and_add_to_cart:
       example: false
       selector:
         boolean:
+
+delete_from_cart:
+  name: Delete from cart
+  description: Remove a product from the shopping cart using its order field ID
+  fields:
+    config_entry_id:
+      name: Account
+      description: The Rohlik account to use
+      required: true
+      selector:
+        config_entry:
+          integration: rohlikcz2
+    order_field_id:
+      name: Order field ID
+      description: The orderFieldId of the cart item to remove (from get_cart_content)
+      required: true
+      example: "abc123"
+      selector:
+        text:
