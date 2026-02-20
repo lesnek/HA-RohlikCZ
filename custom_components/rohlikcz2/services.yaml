@@ -9,7 +9,7 @@ add_to_cart:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
     product_id:
       name: Product ID
       description: The ID of the product to add to cart
@@ -40,7 +40,7 @@ search_product:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
     product_name:
       name: Product name
       description: The name or search term for the product
@@ -75,7 +75,7 @@ get_shopping_list:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
     shopping_list_id:
       name: Shopping list ID
       description: The ID of the shopping list to retrieve
@@ -94,7 +94,7 @@ get_cart_content:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
 
 update_data:
   name: Update data
@@ -106,7 +106,7 @@ update_data:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
 
 search_and_add_to_cart:
   name: Search and add to cart
@@ -118,7 +118,7 @@ search_and_add_to_cart:
       required: true
       selector:
         config_entry:
-          integration: rohlikcz
+          integration: rohlikcz2
     product_name:
       name: Product name
       description: Name of the product to search and add
