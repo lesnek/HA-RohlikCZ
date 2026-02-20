@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
@@ -11,9 +12,26 @@ from .const import DOMAIN
 from .hub import RohlikAccount
 from .services import register_services
 
+_WWW_DIR = pathlib.Path(__file__).parent / "www"
+
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "todo", "calendar"]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register static www assets once at startup."""
+    hass.http.register_static_path(
+        f"/rohlikcz2/rohlikcz-cart-card.js",
+        str(_WWW_DIR / "rohlikcz-cart-card.js"),
+        cache_headers=False,
+    )
+    hass.http.register_static_path(
+        f"/rohlikcz2/rohlikcz-shopping-list-card.js",
+        str(_WWW_DIR / "rohlikcz-shopping-list-card.js"),
+        cache_headers=False,
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
