@@ -3,7 +3,7 @@
   "name": "Rohlík2.0",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["frontend"],
   "documentation": "",
   "iot_class": "cloud_polling",
   "issue_tracker": "",
