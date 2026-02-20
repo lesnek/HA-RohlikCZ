@@ -8,7 +8,7 @@ from typing import Final
 
 
 HTTP_TIMEOUT: Final = ClientTimeout(total=10)
-DOMAIN = "rohlikcz"
+DOMAIN = "rohlikcz2"
 
 """Icons"""
 ICON_PARENTCLUB = "mdi:human-male-female-child"
