@@ -21,16 +21,11 @@ PLATFORMS: list[str] = ["sensor", "binary_sensor", "todo", "calendar"]
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register static www assets once at startup."""
-    hass.http.register_static_path(
-        f"/rohlikcz2/rohlikcz-cart-card.js",
-        str(_WWW_DIR / "rohlikcz-cart-card.js"),
-        cache_headers=False,
-    )
-    hass.http.register_static_path(
-        f"/rohlikcz2/rohlikcz-shopping-list-card.js",
-        str(_WWW_DIR / "rohlikcz-shopping-list-card.js"),
-        cache_headers=False,
-    )
+    from homeassistant.components.http import StaticPathConfig
+    await hass.http.async_register_static_paths([
+        StaticPathConfig("/rohlikcz2/rohlikcz-cart-card.js", str(_WWW_DIR / "rohlikcz-cart-card.js"), False),
+        StaticPathConfig("/rohlikcz2/rohlikcz-shopping-list-card.js", str(_WWW_DIR / "rohlikcz-shopping-list-card.js"), False),
+    ])
     return True
 
 
