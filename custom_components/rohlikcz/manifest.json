@@ -1,12 +1,12 @@
 {
-  "domain": "rohlikcz",
-  "name": "Rohlík.cz",
-  "codeowners": ["@dvejsada"],
+  "domain": "rohlikcz2",
+  "name": "Rohlík2.0",
+  "codeowners": [],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/dvejsada/HA-RohlikCZ",
+  "documentation": "",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/dvejsada/HA-RohlikCZ/issues",
+  "issue_tracker": "",
   "requirements": [],
-  "version": "0.3.1"
+  "version": "0.1.1"
 }
