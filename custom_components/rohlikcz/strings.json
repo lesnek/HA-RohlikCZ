@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Rohlik.cz Account",
+        "description": "Enter your Rohlik.cz login credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        },
+        "data_description": {
+          "email": "Your Rohlik.cz account email",
+          "password": "Your Rohlik.cz account password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Rohlik.cz",
+      "invalid_auth": "Invalid email or password",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Account is already configured"
+    }
+  }
+}
